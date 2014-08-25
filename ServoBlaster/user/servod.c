@@ -60,6 +60,8 @@
 #define DEVFILE			"/dev/servoblaster"
 #define CFGFILE			"/dev/servoblaster-cfg"
 
+#define STATUSFILE		"/dev/shm/servoblaster"
+
 #define PAGE_SIZE		4096
 #define PAGE_SHIFT		12
 
@@ -449,6 +451,19 @@ set_servo_idle(int servo)
 		gpio_set(servo2gpio[servo], invert ? 1 : 0);
 }
 
+static void
+set_status_file()
+{
+	FILE* fp;
+	fp = fopen(STATUSFILE, "w");
+	if (NULL == fp) {
+		;
+	}
+	fprintf(fp, "%d %d %d %d %d %d", servowidth[0], servowidth[1], servowidth[2], servowidth[3], servowidth[4], servowidth[5]);
+	fclose(fp);
+}
+
+
 /* Carefully add or remove bits from the turnoff_mask such that regardless
  * of where the DMA controller is in its cycle, and whether we are increasing
  * or decreasing the pulse width, the generated pulse will only ever be the
@@ -492,6 +507,8 @@ set_servo(int servo, int width)
 		}
 	}
 	servowidth[servo] = width;
+	set_status_file();
+	
 	if (width == 0) {
 		turnon_mask[servo] = 0;
 	} else {
@@ -1034,6 +1051,18 @@ parse_min_max_arg(char *arg, char *name)
 	return -1;	/* Never reached */
 }
 
+static int
+init_status_file()
+{
+	FILE *fp;
+	fp = fopen(STATUSFILE, "w");
+	if (NULL == fp) {
+		fatal("create status file fail\n");
+	}
+	fclose(fp);
+	return 0;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -1231,6 +1260,8 @@ main(int argc, char **argv)
 	if (servo_min_ticks >= servo_max_ticks) {
 		fatal("min value is >= max value\n");
 	}
+	//init status file
+	init_status_file();
 
 	printf("\nBoard revision:            %7d\n", board_rev());
 	printf("Using hardware:                %s\n", delay_hw == DELAY_VIA_PWM ? "PWM" : "PCM");
@@ -1329,10 +1360,10 @@ main(int argc, char **argv)
 		fatal("servod: Failed to create %s: %m\n", DEVFILE);
 	if (chmod(DEVFILE, 0666) < 0)
 		fatal("servod: Failed to set permissions on %s: %m\n", DEVFILE);
-
+	
 	if (daemonize && daemon(0,1) < 0)
 		fatal("servod: Failed to daemonize process: %m\n");
-
+	
 	go_go_go();
 
 	return 0;
